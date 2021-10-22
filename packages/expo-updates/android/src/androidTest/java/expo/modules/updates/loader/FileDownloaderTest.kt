@@ -6,12 +6,14 @@ import androidx.test.internal.runner.junit4.AndroidJUnit4ClassRunner
 import androidx.test.platform.app.InstrumentationRegistry
 import expo.modules.updates.UpdatesConfiguration
 import expo.modules.updates.db.entity.AssetEntity
+import expo.modules.updates.manifest.UpdateManifest
 import org.json.JSONException
 import org.json.JSONObject
 import org.junit.Assert
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.io.File
 
 @RunWith(AndroidJUnit4ClassRunner::class)
 class FileDownloaderTest {
@@ -83,6 +85,7 @@ class FileDownloaderTest {
     // serverDefinedHeaders should not be able to override preset headers
     val extraHeaders = JSONObject()
     extraHeaders.put("expo-platform", "ios")
+
     val actual = FileDownloader.createRequestForManifest(config, extraHeaders, context)
     Assert.assertEquals("android", actual.header("expo-platform"))
     Assert.assertEquals("custom", actual.header("expo-updates-environment"))
@@ -110,5 +113,36 @@ class FileDownloaderTest {
     val actual = FileDownloader.createRequestForAsset(assetEntity, config)
     Assert.assertEquals("android", actual.header("expo-platform"))
     Assert.assertEquals("custom", actual.header("expo-updates-environment"))
+  }
+
+  @Test
+  fun test_downloadAsset_mismatchedAssetHash() {
+    val configMap = mapOf<String, Any>(
+      UpdatesConfiguration.UPDATES_CONFIGURATION_UPDATE_URL_KEY to Uri.parse("https://u.expo.dev/00000000-0000-0000-0000-000000000000"),
+      UpdatesConfiguration.UPDATES_CONFIGURATION_RUNTIME_VERSION_KEY to "1.0",
+    )
+
+    val config = UpdatesConfiguration().loadValuesFromMap(configMap)
+
+    val assetEntity = AssetEntity("test", "jpg").apply {
+      url = Uri.parse("https://example.com")
+      extraRequestHeaders = JSONObject().apply { put("expo-platform", "ios") }
+    }
+
+    var errorOccurred = false
+    var didSucceed = false
+
+    FileDownloader(context).downloadAsset(assetEntity, File(context.cacheDir, "test"), config, object : FileDownloader.AssetDownloadCallback {
+      override fun onFailure(e: Exception, assetEntity: AssetEntity) {
+        errorOccurred = true
+      }
+
+      override fun onSuccess(assetEntity: AssetEntity, isNew: Boolean) {
+        didSucceed = true
+      }
+    })
+
+    Assert.assertFalse(errorOccurred)
+    Assert.assertTrue(didSucceed)
   }
 }
